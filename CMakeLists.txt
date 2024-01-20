@@ -116,14 +116,6 @@ option(SDL2MIXER_MOD "Support loading MOD music" ON)
 cmake_dependent_option(SDL2MIXER_MOD_MODPLUG "Support loading MOD music via modplug" OFF SDL2MIXER_MOD OFF)
 cmake_dependent_option(SDL2MIXER_MOD_MODPLUG_SHARED "Dynamically load modplug" "${SDL2MIXER_DEPS_SHARED}" SDL2MIXER_MOD_MODPLUG OFF)
 
-cmake_dependent_option(SDL2MIXER_MOD_XMP "Support loading MOD music via libxmp" ON SDL2MIXER_MOD OFF)
-cmake_dependent_option(SDL2MIXER_MOD_XMP_LITE "Use libxmp-lite instead of libxmp" OFF "SDL2MIXER_MOD_XMP;NOT SDL2MIXER_VENDORED" OFF)
-cmake_dependent_option(SDL2MIXER_MOD_XMP_SHARED "Dynamically load libxmp(-lite)" "${SDL2MIXER_DEPS_SHARED}" SDL2MIXER_MOD_XMP OFF)
-
-if(SDL2MIXER_MOD AND NOT (SDL2MIXER_MOD_MODPLUG OR SDL2MIXER_MOD_XMP))
-    message(FATAL_ERROR "MOD support was enabled (SDL2MIXER_MOD) but neither modplug (SDL2MIXER_MOD_MODPLUG) or xmp (SDL2MIXER_MOD_XMP) was enabled.")
-endif()
-
 option(SDL2MIXER_MP3 "Enable MP3 music" ON)
 
 cmake_dependent_option(SDL2MIXER_MP3_MINIMP3 "Support loading MP3 music via minimp3" ON SDL2MIXER_MP3 OFF)
@@ -137,9 +129,6 @@ endif()
 
 option(SDL2MIXER_MIDI "Enable MIDI music" ON)
 
-cmake_dependent_option(SDL2MIXER_MIDI_FLUIDSYNTH "Support FluidSynth MIDI output" ON "SDL2MIXER_MIDI;NOT SDL2MIXER_VENDORED" OFF)
-cmake_dependent_option(SDL2MIXER_MIDI_FLUIDSYNTH_SHARED "Dynamically load libfluidsynth" "${SDL2MIXER_DEPS_SHARED}" SDL2MIXER_MIDI_FLUIDSYNTH OFF)
-
 if(WIN32 OR APPLE OR HAIKU)
     cmake_dependent_option(SDL2MIXER_MIDI_NATIVE "Support native MIDI output" ON SDL2MIXER_MIDI OFF)
 else()
@@ -147,10 +136,6 @@ else()
 endif()
 
 cmake_dependent_option(SDL2MIXER_MIDI_TIMIDITY "Support timidity MIDI output" ON SDL2MIXER_MIDI OFF)
-
-if(SDL2MIXER_MIDI AND NOT (SDL2MIXER_MIDI_TIMIDITY OR SDL2MIXER_MIDI_NATIVE OR SDL2MIXER_MIDI_FLUIDSYNTH))
-    message(FATAL_ERROR "MIDI support was enabled (SDL2MIXER_MIDI) but neither FluidSynth (SDL2MIXER_MIDI_FLUIDSYNTH), native (SDL2MIXER_MIDI_NATIVE) or timidity (SDL2MIXER_MIDI_TIMIDITY) was enabled")
-endif()
 
 option(SDL2MIXER_OPUS "Enable Opus music" ON)
 cmake_dependent_option(SDL2MIXER_OPUS_SHARED "Dynamically load libopus" "${SDL2MIXER_DEPS_SHARED}" SDL2MIXER_OPUS OFF)
@@ -220,7 +205,6 @@ add_library(SDL2_mixer
     src/codecs/music_cmd.c
     src/codecs/music_drflac.c
     src/codecs/music_flac.c
-    src/codecs/music_fluidsynth.c
     src/codecs/music_gme.c
     src/codecs/music_minimp3.c
     src/codecs/music_modplug.c
@@ -232,7 +216,6 @@ add_library(SDL2_mixer
     src/codecs/music_timidity.c
     src/codecs/music_wav.c
     src/codecs/music_wavpack.c
-    src/codecs/music_xmp.c
     src/effect_position.c
     src/effect_stereoreverse.c
     src/effects_internal.c
@@ -660,72 +643,6 @@ if(SDL2MIXER_MOD_MODPLUG)
     endif()
 endif()
 
-if(SDL2MIXER_MOD_XMP)
-    target_compile_definitions(SDL2_mixer PRIVATE MUSIC_MOD_XMP)
-    if(SDL2MIXER_VENDORED)
-        message(STATUS "Using vendored libxmp")
-        sdl_check_project_in_subfolder(external/libxmp libxmp SDL2MIXER_VENDORED)
-        set(LIBXMP_DISABLE_DEPACKERS ON)
-        set(LIBXMP_DISABLE_PROWIZARD ON)
-        if(SDL2MIXER_MOD_XMP_SHARED)
-            set(BUILD_STATIC OFF)
-            set(BUILD_SHARED ON)
-            set(tgt_xmp xmp_shared)
-        else()
-            set(BUILD_STATIC ON)
-            set(BUILD_SHARED OFF)
-            set(tgt_xmp xmp_static)
-        endif()
-        set(xmp_name libxmp)
-        add_subdirectory(external/libxmp EXCLUDE_FROM_ALL)
-        if(SDL2MIXER_MOD_XMP_SHARED OR NOT SDL2MIXER_BUILD_SHARED_LIBS)
-            list(APPEND INSTALL_EXTRA_TARGETS ${tgt_xmp})
-        endif()
-        if(NOT SDL2MIXER_MOD_XMP_SHARED)
-            list(APPEND PC_LIBS -l$<TARGET_FILE_BASE_NAME:${tgt_xmp}>)
-        endif()
-    else()
-        if(SDL2MIXER_MOD_XMP_LITE)
-            message(STATUS "Using system libxmp-lite")
-            find_package(libxmp-lite REQUIRED)
-            set(tgt_xmp libxmp-lite::libxmp-lite)
-            set(xmp_name libxmp-lite)
-            if(NOT SDL2MIXER_MOD_XMP_SHARED)
-                list(APPEND PC_REQUIRES libxmp-lite)
-            endif()
-        else()
-            message(STATUS "Using system libxmp")
-            find_package(libxmp REQUIRED)
-            if(TARGET libxmp::xmp_shared AND SDL2MIXER_MOD_XMP_SHARED)
-                set(tgt_xmp libxmp::xmp_shared)
-            elseif(TARGET libxmp::xmp_static)
-                set(tgt_xmp libxmp::xmp_static)
-            else()
-                set(tgt_xmp libxmp::libxmp)
-            endif()
-            set(xmp_name libxmp)
-            if(NOT SDL2MIXER_MOD_XMP_SHARED)
-                list(APPEND PC_REQUIRES libxmp)
-            endif()
-        endif()
-    endif()
-    if(SDL2MIXER_MOD_XMP_SHARED)
-        target_include_directories(SDL2_mixer PRIVATE
-            $<TARGET_PROPERTY:${tgt_xmp},INCLUDE_DIRECTORIES>
-            $<TARGET_PROPERTY:${tgt_xmp},INTERFACE_INCLUDE_DIRECTORIES>
-            $<TARGET_PROPERTY:${tgt_xmp},INTERFACE_SYSTEM_INCLUDE_DIRECTORIES>
-        )
-        target_get_dynamic_library(dynamic_xmp ${tgt_xmp})
-        message(STATUS "Dynamic ${xmp_name}: ${dynamic_xmp}")
-        target_compile_definitions(SDL2_mixer PRIVATE "XMP_DYNAMIC=\"${dynamic_xmp}\"")
-        if(SDL2MIXER_VENDORED)
-            add_dependencies(SDL2_mixer ${tgt_xmp})
-        endif()
-    else()
-        target_link_libraries(SDL2_mixer PRIVATE ${tgt_xmp})
-    endif()
-endif()
-
 if(SDL2MIXER_MP3_MINIMP3)
     target_compile_definitions(SDL2_mixer PRIVATE MUSIC_MP3_MINIMP3)
 endif()
@@ -769,35 +686,6 @@ if(SDL2MIXER_MP3_MPG123)
         endif()
     else()
         target_link_libraries(SDL2_mixer PRIVATE MPG123::libmpg123)
-    endif()
-endif()
-
-if(SDL2MIXER_MIDI_FLUIDSYNTH)
-    target_compile_definitions(SDL2_mixer PRIVATE MUSIC_MID_FLUIDSYNTH)
-    if(SDL2MIXER_VENDORED)
-        message(STATUS "Using vendored FluidSynth")
-        message(FATAL_ERROR "FluidSynth is not vendored.")
-    else()
-        message(STATUS "Using system FluidSynth")
-        find_package(FluidSynth REQUIRED)
-        if(NOT SDL2MIXER_MIDI_FLUIDSYNTH_SHARED)
-            list(APPEND PC_REQUIRES fluidsynth)
-        endif()
-    endif()
-    if(SDL2MIXER_MIDI_FLUIDSYNTH_SHARED)
-        target_include_directories(SDL2_mixer PRIVATE
-            $<TARGET_PROPERTY:FluidSynth::libfluidsynth,INCLUDE_DIRECTORIES>
-            $<TARGET_PROPERTY:FluidSynth::libfluidsynth,INTERFACE_INCLUDE_DIRECTORIES>
-            $<TARGET_PROPERTY:FluidSynth::libfluidsynth,INTERFACE_SYSTEM_INCLUDE_DIRECTORIES>
-        )
-        target_get_dynamic_library(dynamic_fluidsynth FluidSynth::libfluidsynth)
-        message(STATUS "Dynamic fluidsynth: ${dynamic_fluidsynth}")
-        target_compile_definitions(SDL2_mixer PRIVATE "FLUIDSYNTH_DYNAMIC=\"${dynamic_fluidsynth}\"")
-        if(SDL2MIXER_VENDORED)
-            add_dependencies(SDL2_mixer FluidSynth::libfluidsynth)
-        endif()
-    else()
-        target_link_libraries(SDL2_mixer PRIVATE FluidSynth::libfluidsynth)
     endif()
 endif()
 
@@ -933,10 +821,7 @@ if(SDL2MIXER_INSTALL)
             FILES
                 cmake/PkgConfigHelper.cmake
                 cmake/FindFLAC.cmake
-                cmake/FindFluidSynth.cmake
                 cmake/Findgme.cmake
-                cmake/Findlibxmp.cmake
-                cmake/Findlibxmp-lite.cmake
                 cmake/Findmodplug.cmake
                 cmake/Findmpg123.cmake
                 cmake/FindOpusFile.cmake
